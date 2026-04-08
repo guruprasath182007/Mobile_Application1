@@ -1,0 +1,150 @@
+MainActivity1:				
+package com.example.fittness;
+import android.graphics.Color;
+import android.os.Bundle;
+import android.os.Handler;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.*;
+import androidx.appcompat.app.AppCompatActivity;
+import java.util.ArrayList;
+public class MainActivity extends AppCompatActivity {
+    private FitnessEngine engine = new FitnessEngine();
+    private View screenLogin, screenDash, screenList;
+    private TextView tvTimer, tvCals, tvXP, tvEmoji, tvEncourage, tvHeader, tvListTitle;
+    private ProgressBar progressRing;
+    private ListView mainListView;
+    private boolean isRunning = false;
+    private Handler handler = new Handler();
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        // Bindings
+        screenLogin = findViewById(R.id.screenLogin);
+        screenDash = findViewById(R.id.screenDash);
+        screenList = findViewById(R.id.screenList);
+        tvTimer = findViewById(R.id.tvTimer);
+        tvCals = findViewById(R.id.tvCals);
+        tvXP = findViewById(R.id.tvXP);
+        tvEmoji = findViewById(R.id.tvEmoji);
+        tvEncourage = findViewById(R.id.tvEncouragement);
+        tvHeader = findViewById(R.id.tvHeader);
+        tvListTitle = findViewById(R.id.tvListTitle);
+        progressRing = findViewById(R.id.progressRing);
+        mainListView = findViewById(R.id.mainListView);
+
+        // Login Logic
+        findViewById(R.id.btnLogin).setOnClickListener(v -> {
+            String user = ((EditText)findViewById(R.id.etUser)).getText().toString();
+            String pass = ((EditText)findViewById(R.id.etPass)).getText().toString();
+            if(!user.isEmpty() && !pass.isEmpty()) {
+                screenLogin.setVisibility(View.GONE);
+                screenDash.setVisibility(View.VISIBLE);
+            } else {
+                Toast.makeText(this, "Enter Username & Password 🛑", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        // Timer Logic
+        findViewById(R.id.btnStart).setOnClickListener(v -> isRunning = true);
+        findViewById(R.id.btnStop).setOnClickListener(v -> isRunning = false);
+
+        // Menu Logic
+        findViewById(R.id.btnMenu).setOnClickListener(v -> {
+            PopupMenu p = new PopupMenu(this, v);
+            p.getMenu().add("RUNNING MODE 🏃");
+            p.getMenu().add("EXERCISE MODE 💪");
+            p.getMenu().add("LEADERBOARD 🏆");
+            p.getMenu().add("WEEKLY REPORT 📊");
+            p.setOnMenuItemClickListener(item -> {
+                handleMenu(item.getTitle().toString());
+                return true;
+            });
+            p.show();
+        });
+
+        findViewById(R.id.btnBack).setOnClickListener(v -> {
+            screenList.setVisibility(View.GONE);
+            screenDash.setVisibility(View.VISIBLE);
+        });
+
+        startMainLoop();
+    }
+    private void handleMenu(String title) {
+        if (title.contains("REPORT")) showList("WEEKLY REPORT 📊", getReportData());
+        else if (title.contains("LEADERBOARD")) showList("LEADERBOARD 🏆", getLeaderData());
+        else {
+            tvHeader.setText(title);
+            tvEmoji.setText(title.contains("RUN") ? "🏃💨" : "💪🔥");
+        }
+    }
+    private void showList(String title, ArrayList<String> data) {
+        tvListTitle.setText(title);
+        screenDash.setVisibility(View.GONE);
+        screenList.setVisibility(View.VISIBLE);
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, data) {
+            @Override
+            public View getView(int pos, View c, ViewGroup p) {
+                TextView tv = (TextView) super.getView(pos, c, p);
+                tv.setTextColor(Color.WHITE);
+                return tv;
+            }
+        };
+        mainListView.setAdapter(adapter);
+    }
+    private ArrayList<String> getReportData() {
+        ArrayList<String> list = new ArrayList<>();
+        list.add("Monday: 450 kcal ✅");
+        list.add("Tuesday: 320 kcal ✅");
+        list.add("Wednesday: 600 kcal 🔥");
+        list.add("Today: " + String.format("%.0f", engine.getCalories()) + " kcal ⚡");
+        return list;
+    }
+    private ArrayList<String> getLeaderData() {
+        ArrayList<String> list = new ArrayList<>();
+        list.add("🥇 WarriorAlex: 15,000 XP");
+        list.add("🥈 FitQueen: 12,400 XP");
+        list.add("🥉 You: " + engine.getXp() + " XP");
+        return list;
+    }
+    private void startMainLoop() {
+        handler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (isRunning) {
+                    engine.tick();
+                    tvTimer.setText(engine.getFormattedTime());
+                    tvCals.setText(String.format("%.1f kcal 🔥", engine.getCalories()));
+                    tvXP.setText(engine.getXp() + " XP ⭐");
+                    progressRing.setProgress(engine.getSeconds() % 100);
+                    if (engine.getSeconds() % 5 == 0) tvEncourage.setText(engine.getEncouragement());
+                }
+                handler.postDelayed(this, 1000);
+            }
+        });
+    }
+}
+MainActivity2:
+package com.example.fittness;
+public class FitnessEngine {
+    private int seconds = 0;
+    private double calories = 0.0;
+    private int xp = 0;
+    public void tick() {
+        seconds++;
+        calories += 0.18;
+        xp += 3;
+    }
+    public String getFormattedTime() {
+        return String.format("%02d:%02d", (seconds % 3600) / 60, seconds % 60);
+    }
+
+    public double getCalories() { return calories; }
+    public int getXp() { return xp; }
+    public int getSeconds() { return seconds; }
+    public String getEncouragement() {
+        String[] m = {"KEEP GOING! 💪", "WARRIOR SOUL! 🔥", "PUSH HARDER! ⚡", "ALMOST ELITE! 🏆"};
+        return m[(int) (Math.random() * m.length)];
+    }
+}
