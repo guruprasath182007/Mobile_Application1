@@ -1,0 +1,143 @@
+package com.example.exp55;
+
+import android.Manifest;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.os.Build;
+import android.os.Bundle;
+import android.widget.Button;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
+
+import com.google.android.material.textfield.TextInputEditText;
+
+public class MainActivity extends AppCompatActivity {
+
+    private float totalExpense = 0;
+    private TextView totalText;
+    private TextInputEditText amountInput, limitInput;
+    private SharedPreferences prefs;
+    private static final String CHANNEL_ID = "budget_alerts";
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        // Initialize Views
+        totalText = findViewById(R.id.totalText);
+        amountInput = findViewById(R.id.amountInput);
+        limitInput = findViewById(R.id.limitInput);
+        Button addBtn = findViewById(R.id.addBtn);
+        Button resetBtn = findViewById(R.id.resetBtn);
+
+        prefs = getSharedPreferences("ExpensePrefs", MODE_PRIVATE);
+
+        loadData();
+        createNotificationChannel();
+        requestNotificationPermission();
+
+        addBtn.setOnClickListener(v -> processExpense());
+        resetBtn.setOnClickListener(v -> resetAll());
+    }
+
+    private void processExpense() {
+        String amountStr = amountInput.getText().toString();
+        String limitStr = limitInput.getText().toString();
+
+        if (amountStr.isEmpty() || limitStr.isEmpty()) {
+            Toast.makeText(this, "Please enter both amount and limit", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        float amount = Float.parseFloat(amountStr);
+        float limit = Float.parseFloat(limitStr);
+
+        totalExpense += amount;
+
+        updateUI(limit);
+        saveData();
+        checkAndNotify(limit);
+
+        amountInput.setText("");
+    }
+
+    private void checkAndNotify(float limit) {
+        if (totalExpense >= limit) {
+            sendColorNotification("OVER LIMIT!", "You've spent $" + totalExpense, Color.RED);
+        } else if (totalExpense >= (limit * 0.85)) {
+            sendColorNotification("Warning: 85% Reached", "Watch your spending!", Color.rgb(255, 165, 0));
+        }
+    }
+
+    private void sendColorNotification(String title, String text, int color) {
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setColor(color)
+                .setColorized(true) // This colors the notification background
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true);
+
+        NotificationManagerCompat manager = NotificationManagerCompat.from(this);
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            manager.notify((int) System.currentTimeMillis(), builder.build());
+        }
+    }
+
+    private void updateUI(float limit) {
+        totalText.setText("$" + String.format("%.2f", totalExpense));
+
+        if (totalExpense >= limit) {
+            totalText.setTextColor(Color.parseColor("#F44336")); // Red
+        } else if (totalExpense >= (limit * 0.85)) {
+            totalText.setTextColor(Color.parseColor("#FF9800")); // Orange
+        } else {
+            totalText.setTextColor(Color.parseColor("#4CAF50")); // Green
+        }
+    }
+
+    private void saveData() {
+        prefs.edit().putFloat("total", totalExpense).apply();
+    }
+
+    private void loadData() {
+        totalExpense = prefs.getFloat("total", 0);
+        totalText.setText("$" + String.format("%.2f", totalExpense));
+    }
+
+    private void resetAll() {
+        totalExpense = 0;
+        saveData();
+        totalText.setText("$0.00");
+        totalText.setTextColor(Color.parseColor("#4CAF50"));
+        Toast.makeText(this, "Tracker Reset", Toast.LENGTH_SHORT).show();
+    }
+
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, 101);
+            }
+        }
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    CHANNEL_ID, "Budget Alerts", NotificationManager.IMPORTANCE_HIGH);
+            channel.setDescription("Alerts for expense limits");
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) manager.createNotificationChannel(channel);
+        }
+    }
+}
