@@ -1,0 +1,172 @@
+package com.example.ex10c;
+
+import android.app.Activity;
+import android.os.Bundle;
+import android.text.Html;
+import android.util.Log;
+import android.view.View;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.widget.ArrayAdapter;
+import android.widget.ListView;
+import android.widget.SearchView;
+import android.widget.Spinner;
+import android.widget.Toast;
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserFactory;
+import java.net.URL;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.Locale;
+public class MainActivity extends Activity {
+    private Spinner spinner;
+    private SearchView searchView;
+    private ListView listView;
+    private WebView webView;
+    private ArrayList<String> titles = new ArrayList<>();
+    private ArrayList<String> filteredTitles = new ArrayList<>();
+    private ArrayList<String> links = new ArrayList<>();
+    private ArrayList<String> times = new ArrayList<>();
+    private ArrayAdapter<String> adapter;
+    private static final String TAG = "E-News";
+    private String[] categories = {"Top Stories", "Technology", "Business"};
+    private String[] feeds = {
+            "https://feeds.bbci.co.uk/news/rss.xml",
+            "https://feeds.bbci.co.uk/news/technology/rss.xml",
+            "https://feeds.bbci.co.uk/news/business/rss.xml"
+    };
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        spinner = findViewById(R.id.spinner);
+        searchView = findViewById(R.id.searchView);
+        listView = findViewById(R.id.listView);
+        webView = findViewById(R.id.webView);
+
+        ArrayAdapter<String> spinnerAdapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, categories);
+        spinner.setAdapter(spinnerAdapter);
+        adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, filteredTitles);
+        listView.setAdapter(adapter);
+        webView.setWebViewClient(new WebViewClient());
+        webView.getSettings().setJavaScriptEnabled(true);
+        fetchRSS(feeds[0]);
+        // Spinner selection changes feed
+        spinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                titles.clear(); links.clear(); times.clear(); filteredTitles.clear();
+                adapter.notifyDataSetChanged();
+                fetchRSS(feeds[position]);
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) {}
+        });
+        listView.setOnItemClickListener((parent, view, position, id) -> {
+            String url = links.get(position);
+            webView.setVisibility(View.VISIBLE);
+            listView.setVisibility(View.GONE);
+            webView.loadUrl(url);
+        });
+        searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
+            @Override public boolean onQueryTextSubmit(String query) { return false; }
+            @Override
+            public boolean onQueryTextChange(String newText) {
+                filteredTitles.clear();
+                if (newText.isEmpty()) {
+                    filteredTitles.addAll(titlesWithTime());
+                } else {
+                    for (int i = 0; i < titles.size(); i++) {
+                        if (titles.get(i).toLowerCase().contains(newText.toLowerCase())) {
+                            filteredTitles.add(Html.fromHtml(titles.get(i) + "<br/><small>" + times.get(i) + "</small>").toString());
+                        }
+                    }
+                }
+                adapter.notifyDataSetChanged();
+                return true;
+            }
+        });
+    }
+    private ArrayList<String> titlesWithTime() {
+        ArrayList<String> combined = new ArrayList<>();
+        for (int i = 0; i < titles.size(); i++) {
+            combined.add(Html.fromHtml(titles.get(i) + "<br/><small>" + times.get(i) + "</small>").toString());
+        }
+        return combined;
+    }
+    private void fetchRSS(String feedUrl) {
+        new Thread(() -> {
+            try {
+                URL url = new URL(feedUrl);
+                XmlPullParser parser = XmlPullParserFactory.newInstance().newPullParser();
+                parser.setInput(url.openStream(), null);
+                int eventType = parser.getEventType();
+                String title = "", link = "", pubDate = "";
+                String currentTag = "";
+                boolean insideItem = false;
+                while (eventType != XmlPullParser.END_DOCUMENT) {
+                    switch (eventType) {
+                        case XmlPullParser.START_TAG:
+                            currentTag = parser.getName();
+                            if ("item".equalsIgnoreCase(currentTag)) {
+                                insideItem = true;
+                                title = link = pubDate = "";
+                            }
+                            break;
+                        case XmlPullParser.TEXT:
+                            String text = parser.getText();
+                            if (insideItem) {
+                                if ("title".equalsIgnoreCase(currentTag)) title += text;
+                                else if ("link".equalsIgnoreCase(currentTag)) link += text;
+                                else if ("pubDate".equalsIgnoreCase(currentTag)) pubDate += text;
+                            }
+                            break;
+                        case XmlPullParser.END_TAG:
+                            if ("item".equalsIgnoreCase(parser.getName())) {
+                                if (!title.trim().isEmpty() && !link.trim().isEmpty()) {
+                                    titles.add(title.trim());
+                                    links.add(link.trim());
+                                    times.add(formatDate(pubDate.trim()));
+                                }
+                                insideItem = false;
+                            }
+                            break;
+                    }
+                    eventType = parser.next();
+                }
+                runOnUiThread(() -> {
+                    filteredTitles.clear();
+                    filteredTitles.addAll(titlesWithTime());
+                    adapter.notifyDataSetChanged();
+                    Toast.makeText(MainActivity.this,
+                            "Loaded " + titles.size() + " headlines",
+                            Toast.LENGTH_SHORT).show();
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "RSS load error", e);
+                runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                        "Error loading RSS: " + e.getMessage(),
+                        Toast.LENGTH_LONG).show());
+            }
+        }).start();
+    }
+    private String formatDate(String pubDate) {
+        try {
+            SimpleDateFormat rssFormat = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss Z", Locale.ENGLISH);
+            Date date = rssFormat.parse(pubDate);
+            SimpleDateFormat displayFormat = new SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.ENGLISH);
+            return displayFormat.format(date);
+        } catch (Exception e) {
+            return pubDate;
+        }
+    }
+    @Override
+    public void onBackPressed() {
+        if (webView.getVisibility() == View.VISIBLE) {
+            webView.setVisibility(View.GONE);
+            listView.setVisibility(View.VISIBLE);
+        } else {
+            super.onBackPressed();
+        }
+    }
+}
